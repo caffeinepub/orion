@@ -377,6 +377,7 @@ export function TimerView({ subTopic, category }: Props) {
             type: "TIMER_BACKGROUNDED",
             remainingSecs: remainingSecsRef.current,
             startTs: Date.now(),
+            totalDurationSecs: durationMinutesRef.current * 60,
           });
         }
       } else {
@@ -390,6 +391,19 @@ export function TimerView({ subTopic, category }: Props) {
     document.addEventListener("visibilitychange", handleVisChange);
     return () =>
       document.removeEventListener("visibilitychange", handleVisChange);
+  }, []);
+
+  // ── Listen for SW_STOP_TIMER message from service worker ──
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "SW_STOP_TIMER") {
+        handleStop();
+      }
+    };
+    navigator.serviceWorker?.addEventListener("message", handler);
+    return () =>
+      navigator.serviceWorker?.removeEventListener("message", handler);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: handleStop is stable
   }, []);
 
   const handleTimerEnd = useCallback(() => {
@@ -449,6 +463,7 @@ export function TimerView({ subTopic, category }: Props) {
           type: "TIMER_STARTED",
           remainingSecs: remainingSecsRef.current,
           startTs: Date.now(),
+          totalDurationSecs: durationMinutesRef.current * 60,
         });
       };
       if (Notification.permission === "default") {
