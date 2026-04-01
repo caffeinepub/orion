@@ -416,6 +416,10 @@ function SettingsSheet({
     setShootingStarOpacity,
     beltOpacity,
     setBeltOpacity,
+    soundEnabled,
+    setSoundEnabled,
+    tickEnabled,
+    setTickEnabled,
   } = useAppSettings();
   const { logout } = useLocalAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -548,6 +552,36 @@ function SettingsSheet({
               />
             </div>
           )}
+
+          {/* Sounds */}
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Sounds
+            </p>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm font-medium">Enable Sounds</span>
+              <Switch
+                data-ocid="settings.sound.toggle"
+                checked={soundEnabled}
+                onCheckedChange={setSoundEnabled}
+              />
+            </div>
+            {soundEnabled && (
+              <div className="flex items-center justify-between py-2 pl-4">
+                <div>
+                  <span className="text-sm font-medium">Clock Tick</span>
+                  <p className="text-xs text-muted-foreground">
+                    Soft tick every second
+                  </p>
+                </div>
+                <Switch
+                  data-ocid="settings.tick.toggle"
+                  checked={tickEnabled}
+                  onCheckedChange={setTickEnabled}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Living Space */}
           <div className="mb-6">

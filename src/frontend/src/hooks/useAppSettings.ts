@@ -11,6 +11,8 @@ const BELT_ENABLED_KEY = "naksha-belt-enabled";
 const STARS_OPACITY_KEY = "naksha-stars-opacity";
 const SHOOTING_OPACITY_KEY = "naksha-shooting-opacity";
 const BELT_OPACITY_KEY = "naksha-belt-opacity";
+const SOUND_ENABLED_KEY = "naksha-sound-enabled";
+const TICK_ENABLED_KEY = "naksha-tick-enabled";
 
 function applyTheme(theme: AppTheme) {
   const el = document.documentElement;
@@ -56,6 +58,14 @@ export function useAppSettings() {
   const [beltOpacity, setBeltOpacityState] = useState<number>(() => {
     const stored = localStorage.getItem(BELT_OPACITY_KEY);
     return stored ? Number(stored) : 80;
+  });
+  const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => {
+    const stored = localStorage.getItem(SOUND_ENABLED_KEY);
+    return stored === null ? true : stored === "true";
+  });
+  const [tickEnabled, setTickEnabledState] = useState<boolean>(() => {
+    const stored = localStorage.getItem(TICK_ENABLED_KEY);
+    return stored === null ? false : stored === "true";
   });
 
   useEffect(() => {
@@ -112,6 +122,16 @@ export function useAppSettings() {
     setBeltOpacityState(val);
   }
 
+  function setSoundEnabled(val: boolean) {
+    localStorage.setItem(SOUND_ENABLED_KEY, String(val));
+    setSoundEnabledState(val);
+  }
+
+  function setTickEnabled(val: boolean) {
+    localStorage.setItem(TICK_ENABLED_KEY, String(val));
+    setTickEnabledState(val);
+  }
+
   return {
     theme,
     setTheme,
@@ -131,5 +151,9 @@ export function useAppSettings() {
     setShootingStarOpacity,
     beltOpacity,
     setBeltOpacity,
+    soundEnabled,
+    setSoundEnabled,
+    tickEnabled,
+    setTickEnabled,
   };
 }

@@ -24,7 +24,16 @@ import {
   useToggleTodoItem,
 } from "../hooks/useQueries";
 import type { Category, SubTopic } from "../hooks/useQueries";
-import { initAudioContext, playBeep } from "../utils/playBeep";
+import {
+  initAudioContext,
+  playBeep,
+  playCompleteSound,
+  playMilestoneSound,
+  playPauseSound,
+  playResumeSound,
+  playStartSound,
+  playTickSound,
+} from "../utils/playBeep";
 import { SessionEndModal } from "./SessionEndModal";
 import { StarCanvas } from "./StarCanvas";
 
@@ -56,7 +65,7 @@ function savePresets(presets: number[]) {
 
 // ── Task Extras (deadlines + alarms) stored in localStorage ──
 interface TaskExtras {
-  deadline: number | null; // timestamp ms
+  deadline: number | null;
   alarmEnabled: boolean;
 }
 type TaskExtrasMap = Record<string, TaskExtras>;
@@ -87,6 +96,44 @@ function formatCountdown(ms: number): string {
   return `${secs}s`;
 }
 
+// ── Persist active timer across navigation ──
+const LS_ACTIVE_TIMER = "naksha-active-timer";
+
+interface PersistedTimer {
+  subTopicId: string;
+  state: TimerState;
+  startTs: number; // Date.now() when last started/resumed
+  startRemaining: number; // seconds remaining when started/resumed
+  accumulated: number; // seconds accumulated before this segment
+  durationMinutes: number;
+  sessionStartNs: string; // bigint as string
+  lastBeepMinute: number;
+}
+
+function saveTimerState(p: PersistedTimer) {
+  localStorage.setItem(LS_ACTIVE_TIMER, JSON.stringify(p));
+}
+
+function clearTimerState() {
+  localStorage.removeItem(LS_ACTIVE_TIMER);
+}
+
+function loadTimerState(): PersistedTimer | null {
+  try {
+    const raw = localStorage.getItem(LS_ACTIVE_TIMER);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Service Worker helpers ──
+function swPost(msg: object) {
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage(msg);
+  }
+}
+
 export function TimerView({ subTopic, category }: Props) {
   const [presets, setPresets] = useState<number[]>(() => getStoredPresets());
   const [selectedPreset, setSelectedPreset] = useState<number | "custom">(
@@ -101,15 +148,30 @@ export function TimerView({ subTopic, category }: Props) {
       ? Math.max(1, Number.parseInt(customMinutes) || 1)
       : selectedPreset;
 
-  const [remainingSecs, setRemainingSecs] = useState(durationMinutes * 60);
+  // ── Timer state — restored from localStorage if was running ──
   const [timerState, setTimerState] = useState<TimerState>("idle");
+  const [remainingSecs, setRemainingSecs] = useState(() => {
+    const saved = loadTimerState();
+    if (
+      saved &&
+      saved.subTopicId === subTopic.id.toString() &&
+      saved.state !== "idle"
+    ) {
+      if (saved.state === "running") {
+        const elapsed = Math.floor((Date.now() - saved.startTs) / 1000);
+        return Math.max(0, saved.startRemaining - elapsed);
+      }
+      return saved.startRemaining;
+    }
+    return durationMinutes * 60;
+  });
+
   const [showModal, setShowModal] = useState(false);
   const [stayAwake, setStayAwake] = useState(true);
 
   const [newTaskText, setNewTaskText] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
 
-  // ── Task deadline state ──
   const [taskExtras, setTaskExtras] = useState<TaskExtrasMap>(() =>
     loadTaskExtras(),
   );
@@ -118,12 +180,10 @@ export function TimerView({ subTopic, category }: Props) {
   );
   const [deadlineInput, setDeadlineInput] = useState("");
   const [alarmFired, setAlarmFired] = useState<Set<string>>(new Set());
-  // Live countdown tick
   const [, setTick] = useState(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const notifIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionStartNsRef = useRef<bigint>(0n);
   const totalElapsedRef = useRef<number>(0);
   const lastBeepMinuteRef = useRef<number>(0);
@@ -135,6 +195,7 @@ export function TimerView({ subTopic, category }: Props) {
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const remainingSecsRef = useRef(remainingSecs);
   const timerStateRef = useRef<TimerState>("idle");
+  const pendingAutoResumeRef = useRef(false);
 
   const addSession = useAddSession();
   const { data: todos = [], isLoading: todosLoading } = useTodoItemsBySubTopic(
@@ -143,6 +204,60 @@ export function TimerView({ subTopic, category }: Props) {
   const addTodo = useAddTodoItem();
   const toggleTodo = useToggleTodoItem(subTopic.id);
   const deleteTodo = useDeleteTodoItem(subTopic.id);
+
+  // ── Restore running timer on mount ──
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only restore
+  useEffect(() => {
+    const saved = loadTimerState();
+    if (
+      saved &&
+      saved.subTopicId === subTopic.id.toString() &&
+      saved.state !== "idle"
+    ) {
+      const preset = saved.durationMinutes;
+      setSelectedPreset(presets.includes(preset) ? preset : "custom");
+      if (!presets.includes(preset)) setCustomMinutes(String(preset));
+      durationMinutesRef.current = saved.durationMinutes;
+
+      if (saved.state === "running") {
+        // Recalculate elapsed
+        const elapsed = Math.floor((Date.now() - saved.startTs) / 1000);
+        const remaining = Math.max(0, saved.startRemaining - elapsed);
+        if (remaining > 0) {
+          // Restore as paused, let user resume — prevents double-running
+          accumulatedSecsRef.current = saved.accumulated + elapsed;
+          totalElapsedRef.current = accumulatedSecsRef.current;
+          lastBeepMinuteRef.current = saved.lastBeepMinute;
+          sessionStartNsRef.current = BigInt(saved.sessionStartNs);
+          pendingAutoResumeRef.current = true;
+          setTimerState("paused");
+          timerStateRef.current = "paused";
+          setRemainingSecs(remaining);
+          remainingSecsRef.current = remaining;
+          startRemainingRef.current = remaining;
+          toast.info("Timer resumed — session continuing");
+        } else {
+          clearTimerState();
+        }
+      } else if (saved.state === "paused") {
+        accumulatedSecsRef.current = saved.accumulated;
+        totalElapsedRef.current = saved.accumulated;
+        lastBeepMinuteRef.current = saved.lastBeepMinute;
+        sessionStartNsRef.current = BigInt(saved.sessionStartNs);
+        setTimerState("paused");
+        timerStateRef.current = "paused";
+        startRemainingRef.current = saved.startRemaining;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (pendingAutoResumeRef.current && timerState === "paused") {
+      pendingAutoResumeRef.current = false;
+      startTimer();
+    }
+  }, [timerState]); // intentionally omit startTimer from deps
 
   useEffect(() => {
     durationMinutesRef.current = durationMinutes;
@@ -160,13 +275,6 @@ export function TimerView({ subTopic, category }: Props) {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
-    }
-  }, []);
-
-  const clearNotifInterval = useCallback(() => {
-    if (notifIntervalRef.current) {
-      clearInterval(notifIntervalRef.current);
-      notifIntervalRef.current = null;
     }
   }, []);
 
@@ -196,14 +304,17 @@ export function TimerView({ subTopic, category }: Props) {
 
   const resetTimer = useCallback(() => {
     clearInterval_();
-    clearNotifInterval();
     releaseWakeLock();
+    swPost({ type: "TIMER_STOPPED" });
+    swPost({ type: "CANCEL_BEEPS" });
     setTimerState("idle");
+    timerStateRef.current = "idle";
     totalElapsedRef.current = 0;
     accumulatedSecsRef.current = 0;
     lastBeepMinuteRef.current = 0;
+    clearTimerState();
     setRemainingSecs(durationMinutesRef.current * 60);
-  }, [clearInterval_, clearNotifInterval, releaseWakeLock]);
+  }, [clearInterval_, releaseWakeLock]);
 
   useEffect(() => {
     if (subTopicIdRef.current !== subTopic.id.toString()) {
@@ -221,7 +332,6 @@ export function TimerView({ subTopic, category }: Props) {
 
   // ── Alarm checker: 1-second interval ──
   useEffect(() => {
-    // Live countdown tick every second
     alarmIntervalRef.current = setInterval(() => {
       setTick((t) => t + 1);
       const now = Date.now();
@@ -233,15 +343,13 @@ export function TimerView({ subTopic, category }: Props) {
           !alarmFired.has(taskId)
         ) {
           setAlarmFired((prev) => new Set(prev).add(taskId));
-          // Resume audio context + play beep 3 times
           initAudioContext();
-          playBeep();
-          setTimeout(() => playBeep(), 400);
-          setTimeout(() => playBeep(), 800);
+          playBeep(880, 0.3, 0.15);
+          setTimeout(() => playBeep(880, 0.3, 0.15), 500);
+          setTimeout(() => playBeep(880, 0.3, 0.15), 1000);
           toast.warning("⏰ Task deadline reached!", {
             description: "One of your tasks has hit its deadline.",
           });
-          // System notification
           if (
             "Notification" in window &&
             Notification.permission === "granted"
@@ -259,28 +367,99 @@ export function TimerView({ subTopic, category }: Props) {
     };
   }, [taskExtras, alarmFired]);
 
+  // ── visibilitychange: resume AudioContext & notify SW ──
+  useEffect(() => {
+    const handleVisChange = () => {
+      if (document.hidden) {
+        if (timerStateRef.current === "running") {
+          swPost({
+            type: "TIMER_BACKGROUNDED",
+            remainingSecs: remainingSecsRef.current,
+            startTs: Date.now(),
+          });
+        }
+      } else {
+        // App came to foreground — resume audio
+        initAudioContext();
+        if (timerStateRef.current !== "running") {
+          swPost({ type: "TIMER_FOREGROUNDED" });
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisChange);
+  }, []);
+
   const handleTimerEnd = useCallback(() => {
     clearInterval_();
-    clearNotifInterval();
     releaseWakeLock();
+    swPost({ type: "TIMER_STOPPED" });
+    swPost({ type: "CANCEL_BEEPS" });
     setTimerState("idle");
+    timerStateRef.current = "idle";
+    clearTimerState();
     setShowModal(true);
-    // Final notification
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification("Naksha Study Timer", {
         body: "✅ Session complete! Great work.",
         silent: false,
-        tag: "orion-timer",
+        tag: "naksha-timer",
+        icon: "/favicon.ico",
       });
     }
-  }, [clearInterval_, clearNotifInterval, releaseWakeLock]);
+    // Celebratory beeps
+    if (soundEnabled) {
+      initAudioContext();
+      playCompleteSound();
+    }
+  }, [clearInterval_, releaseWakeLock]);
+
+  function scheduleBeepsInSW(
+    totalDurationMs: number,
+    alreadyElapsedMs: number,
+  ) {
+    swPost({ type: "CANCEL_BEEPS" });
+    let milestone = 10 * 60 * 1000; // 10 min in ms
+    while (milestone <= totalDurationMs) {
+      const delay = milestone - alreadyElapsedMs;
+      if (delay > 0) {
+        const mins = milestone / 60000;
+        swPost({
+          type: "SCHEDULE_BEEP",
+          delay,
+          label: `${mins} minute${mins > 1 ? "s" : ""} of study done! Keep going 🔥`,
+        });
+      }
+      milestone += 10 * 60 * 1000;
+    }
+  }
 
   function startTimer() {
     initAudioContext();
-
-    // Request notification permission
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
+    if (soundEnabled) {
+      if (timerState === "idle") playStartSound();
+      else playResumeSound();
+    }
+    // Request permission; if already granted, send immediate notification
+    if ("Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().then((perm) => {
+          if (perm === "granted") {
+            swPost({
+              type: "TIMER_BACKGROUNDED",
+              remainingSecs: remainingSecsRef.current,
+              startTs: Date.now(),
+            });
+          }
+        });
+      } else if (Notification.permission === "granted") {
+        swPost({
+          type: "TIMER_BACKGROUNDED",
+          remainingSecs: remainingSecsRef.current,
+          startTs: Date.now(),
+        });
+      }
     }
 
     if (timerState === "idle") {
@@ -291,29 +470,16 @@ export function TimerView({ subTopic, category }: Props) {
     }
 
     startTsRef.current = Date.now();
-    startRemainingRef.current = remainingSecs;
+    startRemainingRef.current = remainingSecsRef.current;
     setTimerState("running");
+    timerStateRef.current = "running";
 
     if (stayAwake) acquireWakeLock();
 
-    // Start notification interval (every 60s)
-    clearNotifInterval();
-    notifIntervalRef.current = setInterval(() => {
-      if (
-        "Notification" in window &&
-        Notification.permission === "granted" &&
-        timerStateRef.current === "running"
-      ) {
-        const secs = remainingSecsRef.current;
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        new Notification("Naksha Study Timer", {
-          body: `⏱ ${pad(m)}:${pad(s)} remaining`,
-          silent: true,
-          tag: "orion-timer",
-        });
-      }
-    }, 60_000);
+    // Pre-schedule 10-min beeps via SW
+    const totalDurationMs = durationMinutesRef.current * 60 * 1000;
+    const alreadyElapsedMs = accumulatedSecsRef.current * 1000;
+    scheduleBeepsInSW(totalDurationMs, alreadyElapsedMs);
 
     intervalRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTsRef.current) / 1000);
@@ -321,6 +487,13 @@ export function TimerView({ subTopic, category }: Props) {
       const totalElapsed = accumulatedSecsRef.current + elapsed;
       totalElapsedRef.current = totalElapsed;
 
+      // Clock tick
+      if (soundEnabled && tickEnabled) {
+        initAudioContext();
+        playTickSound();
+      }
+
+      // In-foreground 10-min milestone
       const elapsedMinutes = Math.floor(totalElapsed / 60);
       if (
         elapsedMinutes > 0 &&
@@ -328,8 +501,23 @@ export function TimerView({ subTopic, category }: Props) {
         elapsedMinutes !== lastBeepMinuteRef.current
       ) {
         lastBeepMinuteRef.current = elapsedMinutes;
-        playBeep();
+        if (soundEnabled) {
+          initAudioContext();
+          playMilestoneSound();
+        }
       }
+
+      // Persist timer state to survive navigation
+      saveTimerState({
+        subTopicId: subTopicIdRef.current,
+        state: "running",
+        startTs: startTsRef.current,
+        startRemaining: startRemainingRef.current,
+        accumulated: accumulatedSecsRef.current,
+        durationMinutes: durationMinutesRef.current,
+        sessionStartNs: sessionStartNsRef.current.toString(),
+        lastBeepMinute: lastBeepMinuteRef.current,
+      });
 
       if (next <= 0) {
         handleTimerEnd();
@@ -337,16 +525,30 @@ export function TimerView({ subTopic, category }: Props) {
         return;
       }
       setRemainingSecs(next);
+      remainingSecsRef.current = next;
     }, 500);
   }
 
   function pauseTimer() {
+    if (soundEnabled) playPauseSound();
     const elapsed = Math.floor((Date.now() - startTsRef.current) / 1000);
     accumulatedSecsRef.current += elapsed;
     clearInterval_();
-    clearNotifInterval();
     releaseWakeLock();
+    swPost({ type: "TIMER_FOREGROUNDED" });
+    swPost({ type: "CANCEL_BEEPS" });
     setTimerState("paused");
+    timerStateRef.current = "paused";
+    saveTimerState({
+      subTopicId: subTopicIdRef.current,
+      state: "paused",
+      startTs: startTsRef.current,
+      startRemaining: remainingSecsRef.current,
+      accumulated: accumulatedSecsRef.current,
+      durationMinutes: durationMinutesRef.current,
+      sessionStartNs: sessionStartNsRef.current.toString(),
+      lastBeepMinute: lastBeepMinuteRef.current,
+    });
   }
 
   function handleStop() {
@@ -357,9 +559,12 @@ export function TimerView({ subTopic, category }: Props) {
       totalElapsedRef.current = accumulatedSecsRef.current;
     }
     clearInterval_();
-    clearNotifInterval();
     releaseWakeLock();
+    swPost({ type: "TIMER_STOPPED" });
+    swPost({ type: "CANCEL_BEEPS" });
     setTimerState("idle");
+    timerStateRef.current = "idle";
+    clearTimerState();
     setShowModal(true);
   }
 
@@ -377,6 +582,7 @@ export function TimerView({ subTopic, category }: Props) {
     setShowModal(false);
     totalElapsedRef.current = 0;
     accumulatedSecsRef.current = 0;
+    clearTimerState();
     setRemainingSecs(durationMinutesRef.current * 60);
   }
 
@@ -389,7 +595,9 @@ export function TimerView({ subTopic, category }: Props) {
         onSuccess: () => {
           setNewTaskText("");
           setShowAddTask(false);
+          toast.success("Task added!");
         },
+        onError: () => toast.error("Failed to add task, please try again."),
       },
     );
   }
@@ -407,7 +615,6 @@ export function TimerView({ subTopic, category }: Props) {
     setEditingPresetIdx(null);
   }
 
-  // ── Deadline helpers ──
   function updateTaskExtras(id: string, patch: Partial<TaskExtras>) {
     setTaskExtras((prev) => {
       const updated = {
@@ -428,7 +635,6 @@ export function TimerView({ subTopic, category }: Props) {
     const ts = new Date(deadlineInput).getTime();
     if (Number.isNaN(ts)) return;
     updateTaskExtras(taskId, { deadline: ts });
-    // Reset alarm-fired if deadline updated
     setAlarmFired((prev) => {
       const next = new Set(prev);
       next.delete(taskId);
@@ -480,6 +686,8 @@ export function TimerView({ subTopic, category }: Props) {
     starsOpacity,
     shootingStarOpacity,
     beltOpacity,
+    soundEnabled,
+    tickEnabled,
   } = useAppSettings();
 
   return (
@@ -679,7 +887,7 @@ export function TimerView({ subTopic, category }: Props) {
           </div>
         </div>
 
-        {/* Start button - grey/off-white */}
+        {/* Start button */}
         {timerState === "idle" && (
           <button
             data-ocid="timer.start_button"
