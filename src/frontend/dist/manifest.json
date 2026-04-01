@@ -1,0 +1,22 @@
+{
+  "name": "Study Timer Pro",
+  "short_name": "StudyTimer",
+  "description": "Comprehensive study timer with progress tracking",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/assets/design-preview.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/design-preview.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

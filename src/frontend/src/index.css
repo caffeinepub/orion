@@ -1,0 +1,212 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/assets/fonts/BricolageGrotesque.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "General Sans";
+  src: url("/assets/fonts/GeneralSans.woff2") format("woff2");
+  font-weight: 200 700;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    --background: 0.98 0.005 210;
+    --foreground: 0.15 0.01 210;
+    --card: 0.99 0.003 210;
+    --card-foreground: 0.15 0.01 210;
+    --popover: 0.99 0.003 210;
+    --popover-foreground: 0.15 0.01 210;
+    --primary: 0.55 0.18 210;
+    --primary-foreground: 0.99 0.003 210;
+    --secondary: 0.92 0.01 210;
+    --secondary-foreground: 0.15 0.01 210;
+    --muted: 0.93 0.01 210;
+    --muted-foreground: 0.5 0.02 210;
+    --accent: 0.92 0.015 210;
+    --accent-foreground: 0.15 0.01 210;
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 0.97 0 0;
+    --border: 0.88 0.02 210;
+    --input: 0.92 0.01 210;
+    --ring: 0.55 0.18 210;
+    --chart-1: 0.55 0.18 210;
+    --chart-2: 0.65 0.15 150;
+    --chart-3: 0.72 0.16 80;
+    --chart-4: 0.6 0.18 280;
+    --chart-5: 0.65 0.16 30;
+    --sidebar: 0.96 0.008 210;
+    --sidebar-foreground: 0.15 0.01 210;
+    --sidebar-primary: 0.55 0.18 210;
+    --sidebar-primary-foreground: 0.99 0.003 210;
+    --sidebar-accent: 0.91 0.015 210;
+    --sidebar-accent-foreground: 0.15 0.01 210;
+    --sidebar-border: 0.88 0.02 210;
+    --sidebar-ring: 0.55 0.18 210;
+    color-scheme: light;
+  }
+
+  /* ── Light Theme (white + sky blue) ── */
+  .theme-light {
+    --background: 0.98 0.005 210;
+    --foreground: 0.15 0.01 210;
+    --card: 0.99 0.003 210;
+    --card-foreground: 0.15 0.01 210;
+    --popover: 0.99 0.003 210;
+    --popover-foreground: 0.15 0.01 210;
+    --primary: 0.55 0.18 210;
+    --primary-foreground: 0.99 0.003 210;
+    --secondary: 0.92 0.01 210;
+    --secondary-foreground: 0.15 0.01 210;
+    --muted: 0.93 0.01 210;
+    --muted-foreground: 0.5 0.02 210;
+    --accent: 0.92 0.015 210;
+    --accent-foreground: 0.15 0.01 210;
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 0.97 0 0;
+    --border: 0.88 0.02 210;
+    --input: 0.92 0.01 210;
+    --ring: 0.55 0.18 210;
+    --chart-1: 0.55 0.18 210;
+    --chart-2: 0.65 0.15 150;
+    --chart-3: 0.72 0.16 80;
+    --chart-4: 0.6 0.18 280;
+    --chart-5: 0.65 0.16 30;
+    --sidebar: 0.96 0.008 210;
+    --sidebar-foreground: 0.15 0.01 210;
+    --sidebar-primary: 0.55 0.18 210;
+    --sidebar-primary-foreground: 0.99 0.003 210;
+    --sidebar-accent: 0.91 0.015 210;
+    --sidebar-accent-foreground: 0.15 0.01 210;
+    --sidebar-border: 0.88 0.02 210;
+    --sidebar-ring: 0.55 0.18 210;
+    color-scheme: light;
+  }
+
+  /* ── Dark Theme (grey + white) ── */
+  .theme-dark {
+    --background: 0.18 0 0;
+    --foreground: 0.92 0 0;
+    --card: 0.22 0 0;
+    --card-foreground: 0.92 0 0;
+    --popover: 0.24 0 0;
+    --popover-foreground: 0.92 0 0;
+    --primary: 0.65 0.08 220;
+    --primary-foreground: 0.1 0 0;
+    --secondary: 0.28 0 0;
+    --secondary-foreground: 0.92 0 0;
+    --muted: 0.28 0 0;
+    --muted-foreground: 0.55 0 0;
+    --accent: 0.3 0 0;
+    --accent-foreground: 0.92 0 0;
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 0.97 0 0;
+    --border: 0.32 0 0;
+    --input: 0.28 0 0;
+    --ring: 0.65 0.08 220;
+    --chart-1: 0.65 0.08 220;
+    --chart-2: 0.74 0.14 150;
+    --chart-3: 0.78 0.16 80;
+    --chart-4: 0.65 0.18 280;
+    --chart-5: 0.7 0.16 30;
+    --sidebar: 0.15 0 0;
+    --sidebar-foreground: 0.88 0 0;
+    --sidebar-primary: 0.65 0.08 220;
+    --sidebar-primary-foreground: 0.1 0 0;
+    --sidebar-accent: 0.22 0 0;
+    --sidebar-accent-foreground: 0.92 0 0;
+    --sidebar-border: 0.25 0 0;
+    --sidebar-ring: 0.65 0.08 220;
+    color-scheme: dark;
+  }
+
+  /* ── Matt Minimalist Grey Theme ── */
+  .theme-grey {
+    --background: 0.97 0 0;
+    --foreground: 0.05 0 0;
+    --card: 0.93 0 0;
+    --card-foreground: 0.05 0 0;
+    --popover: 0.93 0 0;
+    --popover-foreground: 0.05 0 0;
+    --primary: 0.12 0 0;
+    --primary-foreground: 0.97 0 0;
+    --secondary: 0.88 0 0;
+    --secondary-foreground: 0.05 0 0;
+    --muted: 0.88 0 0;
+    --muted-foreground: 0.35 0 0;
+    --accent: 0.88 0 0;
+    --accent-foreground: 0.05 0 0;
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 0.97 0 0;
+    --border: 0.78 0 0;
+    --input: 0.88 0 0;
+    --ring: 0.12 0 0;
+    --chart-1: 0.12 0 0;
+    --chart-2: 0.3 0 0;
+    --chart-3: 0.45 0 0;
+    --chart-4: 0.6 0 0;
+    --chart-5: 0.72 0 0;
+    --sidebar: 0.95 0 0;
+    --sidebar-foreground: 0.05 0 0;
+    --sidebar-primary: 0.12 0 0;
+    --sidebar-primary-foreground: 0.97 0 0;
+    --sidebar-accent: 0.9 0 0;
+    --sidebar-accent-foreground: 0.05 0 0;
+    --sidebar-border: 0.78 0 0;
+    --sidebar-ring: 0.12 0 0;
+    color-scheme: light;
+  }
+
+  /* ── Black & White Theme ── */
+  .theme-bw {
+    --background: 1.0 0 0;
+    --foreground: 0.05 0 0;
+    --card: 0.97 0 0;
+    --card-foreground: 0.05 0 0;
+    --popover: 0.97 0 0;
+    --popover-foreground: 0.05 0 0;
+    --primary: 0.05 0 0;
+    --primary-foreground: 1.0 0 0;
+    --secondary: 0.9 0 0;
+    --secondary-foreground: 0.05 0 0;
+    --muted: 0.92 0 0;
+    --muted-foreground: 0.45 0 0;
+    --accent: 0.92 0 0;
+    --accent-foreground: 0.05 0 0;
+    --destructive: 0.35 0 0;
+    --destructive-foreground: 1.0 0 0;
+    --border: 0.8 0 0;
+    --input: 0.92 0 0;
+    --ring: 0.05 0 0;
+    --chart-1: 0.05 0 0;
+    --chart-2: 0.3 0 0;
+    --chart-3: 0.5 0 0;
+    --chart-4: 0.65 0 0;
+    --chart-5: 0.8 0 0;
+    --sidebar: 0.95 0 0;
+    --sidebar-foreground: 0.05 0 0;
+    --sidebar-primary: 0.05 0 0;
+    --sidebar-primary-foreground: 1.0 0 0;
+    --sidebar-accent: 0.9 0 0;
+    --sidebar-accent-foreground: 0.05 0 0;
+    --sidebar-border: 0.8 0 0;
+    --sidebar-ring: 0.05 0 0;
+    color-scheme: light;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: "General Sans", system-ui, sans-serif;
+  }
+}
