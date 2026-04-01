@@ -5,6 +5,12 @@ export type AppTheme = "light" | "dark" | "bw" | "grey";
 const THEME_KEY = "study-timer-theme";
 const BG_KEY = "study-timer-bg";
 const BG_OPACITY_KEY = "study-timer-bg-opacity";
+const STARS_ENABLED_KEY = "naksha-stars-enabled";
+const SHOOTING_ENABLED_KEY = "naksha-shooting-enabled";
+const BELT_ENABLED_KEY = "naksha-belt-enabled";
+const STARS_OPACITY_KEY = "naksha-stars-opacity";
+const SHOOTING_OPACITY_KEY = "naksha-shooting-opacity";
+const BELT_OPACITY_KEY = "naksha-belt-opacity";
 
 function applyTheme(theme: AppTheme) {
   const el = document.documentElement;
@@ -21,6 +27,34 @@ export function useAppSettings() {
   });
   const [bgOpacity, setBgOpacityState] = useState<number>(() => {
     const stored = localStorage.getItem(BG_OPACITY_KEY);
+    return stored ? Number(stored) : 80;
+  });
+  const [starsEnabled, setStarsEnabledState] = useState<boolean>(() => {
+    const stored = localStorage.getItem(STARS_ENABLED_KEY);
+    return stored === null ? true : stored === "true";
+  });
+  const [shootingStarEnabled, setShootingStarEnabledState] = useState<boolean>(
+    () => {
+      const stored = localStorage.getItem(SHOOTING_ENABLED_KEY);
+      return stored === null ? true : stored === "true";
+    },
+  );
+  const [beltEnabled, setBeltEnabledState] = useState<boolean>(() => {
+    const stored = localStorage.getItem(BELT_ENABLED_KEY);
+    return stored === null ? true : stored === "true";
+  });
+  const [starsOpacity, setStarsOpacityState] = useState<number>(() => {
+    const stored = localStorage.getItem(STARS_OPACITY_KEY);
+    return stored ? Number(stored) : 70;
+  });
+  const [shootingStarOpacity, setShootingStarOpacityState] = useState<number>(
+    () => {
+      const stored = localStorage.getItem(SHOOTING_OPACITY_KEY);
+      return stored ? Number(stored) : 80;
+    },
+  );
+  const [beltOpacity, setBeltOpacityState] = useState<number>(() => {
+    const stored = localStorage.getItem(BELT_OPACITY_KEY);
     return stored ? Number(stored) : 80;
   });
 
@@ -48,5 +82,54 @@ export function useAppSettings() {
     setBgOpacityState(val);
   }
 
-  return { theme, setTheme, bgImage, setBgImage, bgOpacity, setBgOpacity };
+  function setStarsEnabled(val: boolean) {
+    localStorage.setItem(STARS_ENABLED_KEY, String(val));
+    setStarsEnabledState(val);
+  }
+
+  function setShootingStarEnabled(val: boolean) {
+    localStorage.setItem(SHOOTING_ENABLED_KEY, String(val));
+    setShootingStarEnabledState(val);
+  }
+
+  function setBeltEnabled(val: boolean) {
+    localStorage.setItem(BELT_ENABLED_KEY, String(val));
+    setBeltEnabledState(val);
+  }
+
+  function setStarsOpacity(val: number) {
+    localStorage.setItem(STARS_OPACITY_KEY, String(val));
+    setStarsOpacityState(val);
+  }
+
+  function setShootingStarOpacity(val: number) {
+    localStorage.setItem(SHOOTING_OPACITY_KEY, String(val));
+    setShootingStarOpacityState(val);
+  }
+
+  function setBeltOpacity(val: number) {
+    localStorage.setItem(BELT_OPACITY_KEY, String(val));
+    setBeltOpacityState(val);
+  }
+
+  return {
+    theme,
+    setTheme,
+    bgImage,
+    setBgImage,
+    bgOpacity,
+    setBgOpacity,
+    starsEnabled,
+    setStarsEnabled,
+    shootingStarEnabled,
+    setShootingStarEnabled,
+    beltEnabled,
+    setBeltEnabled,
+    starsOpacity,
+    setStarsOpacity,
+    shootingStarOpacity,
+    setShootingStarOpacity,
+    beltOpacity,
+    setBeltOpacity,
+  };
 }

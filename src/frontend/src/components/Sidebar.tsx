@@ -9,6 +9,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
+import { useAppSettings } from "../hooks/useAppSettings";
 import {
   type Category,
   type SubTopic,
@@ -71,6 +73,8 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
   const addSubTopic = useAddSubTopic();
   const deleteCategory = useDeleteCategory();
   const deleteSubTopic = useDeleteSubTopic();
+  const { theme } = useAppSettings();
+  const isGrey = theme === "grey";
 
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -133,6 +137,7 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
       },
       onError: (err) => {
         console.error("Failed to add category:", err);
+        toast.error("Failed to add subject. Please try again.");
       },
     });
   }
@@ -179,8 +184,10 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
       style={{
         width: "4px",
         borderRadius: "4px 0 0 4px",
-        background: "linear-gradient(to bottom, #60a5fa, #38bdf8)",
-        boxShadow: "0 0 8px #38bdf8aa",
+        background: isGrey
+          ? "linear-gradient(to bottom, #9ca3af, #6b7280)"
+          : "linear-gradient(to bottom, #60a5fa, #38bdf8)",
+        boxShadow: isGrey ? "none" : "0 0 8px #38bdf8aa",
         alignSelf: "stretch",
         flexShrink: 0,
       }}
@@ -197,11 +204,13 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
     >
       {/* Header */}
       <div className="px-4 py-5 border-b border-sidebar-border">
-        <h1 className="font-display text-xl font-bold text-sky-400 tracking-tight">
-          Orion
+        <h1
+          className={`font-display text-xl font-bold tracking-tight ${isGrey ? "text-gray-500" : "text-sky-400"}`}
+        >
+          Naksha 🧭
         </h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Focus. Learn. Grow.
+          Your Time. Your Orbit. 🪐
         </p>
       </div>
 
@@ -288,7 +297,9 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
                 style={{
                   boxShadow:
                     "4px 4px 10px rgba(0,0,0,0.2), -2px -2px 6px rgba(255,255,255,0.05)",
-                  background: "oklch(var(--card))",
+                  background: isGrey
+                    ? "rgba(200, 200, 210, 0.5)"
+                    : "oklch(var(--card))",
                 }}
               >
                 <div className="flex items-stretch">

@@ -233,13 +233,24 @@ export function TimerView({ subTopic, category }: Props) {
           !alarmFired.has(taskId)
         ) {
           setAlarmFired((prev) => new Set(prev).add(taskId));
-          // Play beep 3 times with stagger
+          // Resume audio context + play beep 3 times
+          initAudioContext();
           playBeep();
           setTimeout(() => playBeep(), 400);
           setTimeout(() => playBeep(), 800);
           toast.warning("⏰ Task deadline reached!", {
             description: "One of your tasks has hit its deadline.",
           });
+          // System notification
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            new Notification("⏰ Task Deadline Reached!", {
+              body: "One of your tasks has hit its deadline.",
+              icon: "/favicon.ico",
+            });
+          }
         }
       }
     }, 1000);
@@ -256,7 +267,7 @@ export function TimerView({ subTopic, category }: Props) {
     setShowModal(true);
     // Final notification
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("Orion Study Timer", {
+      new Notification("Naksha Study Timer", {
         body: "✅ Session complete! Great work.",
         silent: false,
         tag: "orion-timer",
@@ -296,7 +307,7 @@ export function TimerView({ subTopic, category }: Props) {
         const secs = remainingSecsRef.current;
         const m = Math.floor(secs / 60);
         const s = secs % 60;
-        new Notification("Orion Study Timer", {
+        new Notification("Naksha Study Timer", {
           body: `⏱ ${pad(m)}:${pad(s)} remaining`,
           silent: true,
           tag: "orion-timer",
@@ -461,11 +472,27 @@ export function TimerView({ subTopic, category }: Props) {
     borderRadius: "10px",
   };
 
-  const { theme } = useAppSettings();
+  const {
+    theme,
+    starsEnabled,
+    shootingStarEnabled,
+    beltEnabled,
+    starsOpacity,
+    shootingStarOpacity,
+    beltOpacity,
+  } = useAppSettings();
 
   return (
     <div className="relative flex flex-col h-full">
-      <StarCanvas theme={theme} />
+      <StarCanvas
+        theme={theme}
+        starsEnabled={starsEnabled}
+        shootingStarEnabled={shootingStarEnabled}
+        beltEnabled={beltEnabled}
+        starsOpacity={starsOpacity}
+        shootingStarOpacity={shootingStarOpacity}
+        beltOpacity={beltOpacity}
+      />
       {/* Topic header */}
       <div className="px-4 pt-3 pb-2 md:px-0 md:pt-0 md:mb-4">
         <p className="text-[11px] font-medium text-primary uppercase tracking-widest">
@@ -898,9 +925,12 @@ export function TimerView({ subTopic, category }: Props) {
                   <button
                     type="button"
                     data-ocid={`todo.toggle.${idx + 1}`}
-                    onClick={() =>
-                      updateTaskExtras(taskId, { alarmEnabled: !alarmEnabled })
-                    }
+                    onClick={() => {
+                      if (!alarmEnabled && "Notification" in window) {
+                        Notification.requestPermission();
+                      }
+                      updateTaskExtras(taskId, { alarmEnabled: !alarmEnabled });
+                    }}
                     title={alarmEnabled ? "Alarm on" : "Alarm off"}
                     className={`shrink-0 transition-colors ${
                       alarmEnabled

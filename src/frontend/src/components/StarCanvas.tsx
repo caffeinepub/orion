@@ -3,19 +3,33 @@ import type { AppTheme } from "../hooks/useAppSettings";
 
 interface Props {
   theme: AppTheme;
+  starsEnabled?: boolean;
+  shootingStarEnabled?: boolean;
+  beltEnabled?: boolean;
+  starsOpacity?: number;
+  shootingStarOpacity?: number;
+  beltOpacity?: number;
 }
 
 const ORION_STARS: [number, number][] = [
-  [0.5, 0.47], // belt center
-  [0.35, 0.45], // belt left
-  [0.65, 0.45], // belt right
-  [0.2, 0.25], // left shoulder
-  [0.8, 0.3], // right shoulder
-  [0.25, 0.75], // left foot
-  [0.75, 0.7], // right foot
+  [0.5, 0.47],
+  [0.35, 0.45],
+  [0.65, 0.45],
+  [0.2, 0.25],
+  [0.8, 0.3],
+  [0.25, 0.75],
+  [0.75, 0.7],
 ];
 
-export function StarCanvas({ theme }: Props) {
+export function StarCanvas({
+  theme,
+  starsEnabled = true,
+  shootingStarEnabled = true,
+  beltEnabled = true,
+  starsOpacity = 100,
+  shootingStarOpacity = 100,
+  beltOpacity = 100,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -62,7 +76,6 @@ export function StarCanvas({ theme }: Props) {
         twinkling: false,
         speed: 0.5 + Math.random() * 2.0,
         phase: Math.random() * Math.PI * 2,
-        // gentle global pulsation for all stars
         pulseSpeed: 0.2 + Math.random() * 0.4,
         pulsePhase: Math.random() * Math.PI * 2,
       });
@@ -79,7 +92,6 @@ export function StarCanvas({ theme }: Props) {
     pickTwinklers();
     const twinkleInterval = setInterval(pickTwinklers, 8000);
 
-    // Shooting star
     let shootingStar: {
       x: number;
       y: number;
@@ -104,7 +116,6 @@ export function StarCanvas({ theme }: Props) {
     }
 
     function scheduleShootingStar() {
-      // Every 10 seconds
       return setTimeout(() => {
         launchShootingStar();
         shootingStarTimeout = scheduleShootingStar();
@@ -112,7 +123,6 @@ export function StarCanvas({ theme }: Props) {
     }
     let shootingStarTimeout = scheduleShootingStar();
 
-    // Orion constellation
     interface OrionState {
       cx: number;
       cy: number;
@@ -143,7 +153,6 @@ export function StarCanvas({ theme }: Props) {
     }
 
     function scheduleOrion() {
-      // Every 30 seconds
       return setTimeout(() => {
         launchOrion();
         orionTimeout = scheduleOrion();
@@ -153,7 +162,7 @@ export function StarCanvas({ theme }: Props) {
 
     let rafId: number;
     let lastDraw = 0;
-    const FPS_INTERVAL = 50; // 20fps
+    const FPS_INTERVAL = 50;
 
     function draw(now: number) {
       rafId = requestAnimationFrame(draw);
@@ -168,25 +177,31 @@ export function StarCanvas({ theme }: Props) {
 
       ctx.clearRect(0, 0, w, h);
 
-      // Draw all stars — twinkling ones flicker rapidly, others pulsate gently
-      for (const star of stars) {
-        let alpha: number;
-        if (star.twinkling) {
-          // Fast flicker between 0.2 and 1.0
-          alpha = 0.6 + 0.4 * Math.sin(t * star.speed + star.phase);
-          alpha = Math.max(0.2, Math.min(1.0, alpha));
-        } else {
-          // Slow faint pulsation for all background stars
-          alpha = 0.35 + 0.15 * Math.sin(t * star.pulseSpeed + star.pulsePhase);
+      const starOpacityFactor = starsOpacity / 100;
+      const shootOpacityFactor = shootingStarOpacity / 100;
+      const beltOpacityFactor = beltOpacity / 100;
+
+      // Draw stars
+      if (starsEnabled) {
+        for (const star of stars) {
+          let alpha: number;
+          if (star.twinkling) {
+            alpha = 0.6 + 0.4 * Math.sin(t * star.speed + star.phase);
+            alpha = Math.max(0.2, Math.min(1.0, alpha));
+          } else {
+            alpha =
+              0.35 + 0.15 * Math.sin(t * star.pulseSpeed + star.pulsePhase);
+          }
+          alpha *= starOpacityFactor;
+          ctx.beginPath();
+          ctx.arc(star.fx * w, star.fy * h, star.r, 0, Math.PI * 2);
+          ctx.fillStyle = starColor(alpha);
+          ctx.fill();
         }
-        ctx.beginPath();
-        ctx.arc(star.fx * w, star.fy * h, star.r, 0, Math.PI * 2);
-        ctx.fillStyle = starColor(alpha);
-        ctx.fill();
       }
 
       // Shooting star
-      if (shootingStar?.active) {
+      if (shootingStarEnabled && shootingStar?.active) {
         const elapsed = now - shootingStarStart;
         const progress = Math.min(elapsed / SHOOT_DURATION, 1);
         const dist = 200 * progress;
@@ -195,16 +210,17 @@ export function StarCanvas({ theme }: Props) {
         const tx = hx - shootingStar.length;
         const ty = hy - shootingStar.length;
 
+        const baseAlpha = (1 - progress * 0.5) * shootOpacityFactor;
         const grad = ctx.createLinearGradient(tx, ty, hx, hy);
         if (isDark) {
           grad.addColorStop(0, "rgba(200,220,255,0)");
-          grad.addColorStop(1, `rgba(200,220,255,${1 - progress * 0.5})`);
+          grad.addColorStop(1, `rgba(200,220,255,${baseAlpha})`);
         } else if (isGrey) {
           grad.addColorStop(0, "rgba(50,50,60,0)");
-          grad.addColorStop(1, `rgba(50,50,60,${1 - progress * 0.5})`);
+          grad.addColorStop(1, `rgba(50,50,60,${baseAlpha})`);
         } else {
           grad.addColorStop(0, "rgba(100,120,160,0)");
-          grad.addColorStop(1, `rgba(100,120,160,${1 - progress * 0.5})`);
+          grad.addColorStop(1, `rgba(100,120,160,${baseAlpha})`);
         }
 
         ctx.beginPath();
@@ -218,7 +234,7 @@ export function StarCanvas({ theme }: Props) {
       }
 
       // Orion constellation
-      if (orion && orion.phase !== "done") {
+      if (beltEnabled && orion && orion.phase !== "done") {
         const elapsed = now - orion.startTime;
         let alpha = 0;
         if (orion.phase === "fadein") {
@@ -241,10 +257,11 @@ export function StarCanvas({ theme }: Props) {
         }
         orion.alpha = alpha;
 
+        const beltAlpha = alpha * beltOpacityFactor;
         const cx = orion.cx;
         const cy = orion.cy;
 
-        ctx.strokeStyle = starColor(alpha * 0.35);
+        ctx.strokeStyle = starColor(beltAlpha * 0.35);
         ctx.lineWidth = 0.8;
 
         ctx.beginPath();
@@ -277,7 +294,7 @@ export function StarCanvas({ theme }: Props) {
           const sy = cy + (fy - 0.5) * ORION_H;
           ctx.beginPath();
           ctx.arc(sx, sy, 2 + Math.random() * 1, 0, Math.PI * 2);
-          ctx.fillStyle = starColor(alpha);
+          ctx.fillStyle = starColor(beltAlpha);
           ctx.fill();
         }
       }
@@ -292,7 +309,15 @@ export function StarCanvas({ theme }: Props) {
       clearTimeout(orionTimeout);
       window.removeEventListener("resize", resize);
     };
-  }, [theme]);
+  }, [
+    theme,
+    starsEnabled,
+    shootingStarEnabled,
+    beltEnabled,
+    starsOpacity,
+    shootingStarOpacity,
+    beltOpacity,
+  ]);
 
   return (
     <canvas

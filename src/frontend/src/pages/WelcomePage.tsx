@@ -3,11 +3,27 @@ import { StarCanvas } from "../components/StarCanvas";
 import { useAppSettings } from "../hooks/useAppSettings";
 
 export function WelcomePage() {
-  const { theme } = useAppSettings();
+  const {
+    theme,
+    starsEnabled,
+    shootingStarEnabled,
+    beltEnabled,
+    starsOpacity,
+    shootingStarOpacity,
+    beltOpacity,
+  } = useAppSettings();
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-[80vh]">
-      <StarCanvas theme={theme} />
+      <StarCanvas
+        theme={theme}
+        starsEnabled={starsEnabled}
+        shootingStarEnabled={shootingStarEnabled}
+        beltEnabled={beltEnabled}
+        starsOpacity={starsOpacity}
+        shootingStarOpacity={shootingStarOpacity}
+        beltOpacity={beltOpacity}
+      />
       <style>{`
         @keyframes waveBounce {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }

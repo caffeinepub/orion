@@ -4,7 +4,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Bell, BellOff, CheckSquare, Clock, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { playBeep } from "../utils/playBeep";
+import { initAudioContext, playBeep } from "../utils/playBeep";
 
 interface TodoItem {
   id: string;
@@ -72,11 +72,31 @@ export function TodoPage() {
           !firedAlarms.current.has(todo.id)
         ) {
           firedAlarms.current.add(todo.id);
-          // 3 beeps with 400ms stagger
+          // Request permission if not yet granted
+          if (
+            "Notification" in window &&
+            Notification.permission === "default"
+          ) {
+            Notification.requestPermission();
+          }
+          // Resume audio context + 3 beeps
+          initAudioContext();
           playBeep();
           setTimeout(playBeep, 400);
           setTimeout(playBeep, 800);
           toast.warning(`⏰ Deadline reached: "${todo.text}"`);
+          // System notification
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            new Notification(`⏰ Deadline: "${todo.text}"`, {
+              body: todo.label
+                ? `Label: ${todo.label}`
+                : "Your to-do deadline has arrived",
+              icon: "/favicon.ico",
+            });
+          }
         }
       }
     }, 1000);
@@ -130,6 +150,11 @@ export function TodoPage() {
 
   function toggleAlarm(id: string) {
     firedAlarms.current.delete(id);
+    // Request notification permission when enabling alarm
+    const todo = todos.find((t) => t.id === id);
+    if (!todo?.alarmEnabled && "Notification" in window) {
+      Notification.requestPermission();
+    }
     const next = todos.map((t) =>
       t.id === id ? { ...t, alarmEnabled: !t.alarmEnabled } : t,
     );

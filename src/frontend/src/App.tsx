@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Toaster } from "@/components/ui/sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   Link,
   Outlet,
@@ -20,46 +21,65 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  Loader2,
   LogIn,
   LogOut,
   Timer,
+  UserCircle2,
   X,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { BottomNav } from "./components/BottomNav";
 import { Sidebar } from "./components/Sidebar";
 import { TimerView } from "./components/TimerView";
 import { type AppTheme, useAppSettings } from "./hooks/useAppSettings";
-import { useInternetIdentity } from "./hooks/useInternetIdentity";
+import { useLocalAuth } from "./hooks/useLocalAuth";
 import type { Category, SubTopic } from "./hooks/useQueries";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TodoPage } from "./pages/TodoPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
+// ── Selection Context ──────────────────────────────────────────────────────────
+interface SelectionContextValue {
+  selectedSubTopic: SubTopic | null;
+  selectedCategory: Category | null;
+  onSelectSubTopic: (st: SubTopic, cat: Category) => void;
+}
+
+const SelectionContext = createContext<SelectionContextValue>({
+  selectedSubTopic: null,
+  selectedCategory: null,
+  onSelectSubTopic: () => {},
+});
+
 function LogoutButton() {
-  const { clear, identity } = useInternetIdentity();
-  const principal = identity?.getPrincipal().toString();
-  const shortPrincipal = principal
-    ? `${principal.slice(0, 5)}...${principal.slice(-4)}`
-    : "";
+  const { user, isGuest, logout } = useLocalAuth();
+  const displayName = isGuest ? "Guest" : (user ?? "");
   return (
     <div className="flex items-center gap-3">
-      {shortPrincipal && (
-        <span className="text-xs font-mono text-muted-foreground hidden sm:block">
-          {shortPrincipal}
+      {displayName && (
+        <span className="text-xs font-mono text-muted-foreground hidden sm:block flex items-center gap-1">
+          <UserCircle2 className="h-3.5 w-3.5 inline" />
+          {displayName}
         </span>
       )}
       <Button
         data-ocid="auth.logout_button"
         variant="ghost"
         size="sm"
-        onClick={clear}
+        onClick={logout}
         className="gap-1.5 text-muted-foreground hover:text-foreground text-xs"
       >
         <LogOut className="h-3.5 w-3.5" />
@@ -70,49 +90,83 @@ function LogoutButton() {
 }
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { identity, login, isInitializing, isLoggingIn } =
-    useInternetIdentity();
+  const { isLoggedIn, login, loginAsGuest } = useLocalAuth();
+  const [usernameInput, setUsernameInput] = useState("");
 
-  if (isInitializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!identity) {
+  if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-6 max-w-sm px-6"
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="w-full max-w-sm mx-auto px-6"
         >
-          <div className="w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
-            <Timer className="h-10 w-10 text-primary" />
-          </div>
-          <div>
-            <h1 className="font-display text-3xl font-bold text-foreground">
-              Orion
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Log in to track your study sessions and progress.
-            </p>
-          </div>
-          <Button
-            data-ocid="auth.login_button"
-            onClick={login}
-            disabled={isLoggingIn}
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-5 text-base"
+          {/* Neomorphic card */}
+          <div
+            className="rounded-3xl p-8 space-y-6"
+            style={{
+              background: "var(--card)",
+              boxShadow:
+                "8px 8px 20px rgba(0,0,0,0.18), -4px -4px 12px rgba(255,255,255,0.06)",
+            }}
           >
-            {isLoggingIn ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <LogIn className="h-4 w-4" />
-            )}
-            {isLoggingIn ? "Connecting..." : "Log In"}
-          </Button>
+            {/* Branding */}
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+                <Timer className="h-8 w-8 text-primary" />
+              </div>
+              <h1 className="font-display text-3xl font-bold text-foreground mt-3">
+                Naksha 🧭
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                Your Time. Your Orbit. 🪐
+              </p>
+            </div>
+
+            {/* Username input */}
+            <div className="space-y-3">
+              <input
+                data-ocid="auth.username_input"
+                type="text"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && usernameInput.trim()) {
+                    login(usernameInput);
+                  }
+                }}
+                placeholder="Enter your name"
+                className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-base"
+              />
+              <Button
+                data-ocid="auth.login_button"
+                onClick={() => login(usernameInput)}
+                disabled={!usernameInput.trim()}
+                className="w-full gap-2 py-5 text-base rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <LogIn className="h-4 w-4" />
+                Continue
+              </Button>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground">or</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
+            {/* Guest mode */}
+            <Button
+              data-ocid="auth.guest_button"
+              variant="ghost"
+              onClick={loginAsGuest}
+              className="w-full py-5 text-sm rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent border border-border"
+            >
+              Continue as Guest
+            </Button>
+          </div>
         </motion.div>
       </div>
     );
@@ -343,9 +397,27 @@ function SettingsSheet({
   open: boolean;
   onClose: () => void;
 }) {
-  const { theme, setTheme, bgImage, setBgImage, bgOpacity, setBgOpacity } =
-    useAppSettings();
-  const { clear } = useInternetIdentity();
+  const {
+    theme,
+    setTheme,
+    bgImage,
+    setBgImage,
+    bgOpacity,
+    setBgOpacity,
+    starsEnabled,
+    setStarsEnabled,
+    shootingStarEnabled,
+    setShootingStarEnabled,
+    beltEnabled,
+    setBeltEnabled,
+    starsOpacity,
+    setStarsOpacity,
+    shootingStarOpacity,
+    setShootingStarOpacity,
+    beltOpacity,
+    setBeltOpacity,
+  } = useAppSettings();
+  const { logout } = useLocalAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
@@ -477,6 +549,88 @@ function SettingsSheet({
             </div>
           )}
 
+          {/* Living Space */}
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Living Space
+            </p>
+
+            {/* Stars row */}
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm font-medium">Stars</span>
+              <Switch
+                data-ocid="settings.stars.toggle"
+                checked={starsEnabled}
+                onCheckedChange={setStarsEnabled}
+              />
+            </div>
+            {starsEnabled && (
+              <div className="pl-2 mb-2">
+                <p className="text-xs text-muted-foreground mb-1">
+                  Opacity: {starsOpacity}%
+                </p>
+                <Slider
+                  data-ocid="settings.stars_opacity_slider"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={[starsOpacity]}
+                  onValueChange={([v]) => setStarsOpacity(v)}
+                />
+              </div>
+            )}
+
+            {/* Shooting Star row */}
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm font-medium">Shooting Star</span>
+              <Switch
+                data-ocid="settings.shooting_star.toggle"
+                checked={shootingStarEnabled}
+                onCheckedChange={setShootingStarEnabled}
+              />
+            </div>
+            {shootingStarEnabled && (
+              <div className="pl-2 mb-2">
+                <p className="text-xs text-muted-foreground mb-1">
+                  Opacity: {shootingStarOpacity}%
+                </p>
+                <Slider
+                  data-ocid="settings.shooting_star_opacity_slider"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={[shootingStarOpacity]}
+                  onValueChange={([v]) => setShootingStarOpacity(v)}
+                />
+              </div>
+            )}
+
+            {/* Orion Belt row */}
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm font-medium">Orion Belt</span>
+              <Switch
+                data-ocid="settings.belt.toggle"
+                checked={beltEnabled}
+                onCheckedChange={setBeltEnabled}
+              />
+            </div>
+            {beltEnabled && (
+              <div className="pl-2 mb-2">
+                <p className="text-xs text-muted-foreground mb-1">
+                  Opacity: {beltOpacity}%
+                </p>
+                <Slider
+                  data-ocid="settings.belt_opacity_slider"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={[beltOpacity]}
+                  onValueChange={([v]) => setBeltOpacity(v)}
+                />
+              </div>
+            )}
+          </div>
+
           {/* Logout */}
           <div className="pt-2 border-t border-border">
             <Button
@@ -484,7 +638,7 @@ function SettingsSheet({
               size="sm"
               data-ocid="settings.logout_button"
               onClick={() => {
-                clear();
+                logout();
                 onClose();
               }}
               className="w-full gap-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 justify-start"
@@ -520,26 +674,19 @@ function SettingsSheet({
   );
 }
 
-function AppShell({
-  children,
-  selectedSubTopic,
-  selectedCategory,
-  onSelectSubTopic,
-}: {
-  children: React.ReactNode;
-  selectedSubTopic: SubTopic | null;
-  selectedCategory: Category | null;
-  onSelectSubTopic: (st: SubTopic, cat: Category) => void;
-}) {
+// ── AppShell uses SelectionContext + TanStack navigate ─────────────────────────
+function AppShell({ children }: { children: React.ReactNode }) {
+  const { selectedSubTopic, selectedCategory, onSelectSubTopic } =
+    useContext(SelectionContext);
   const { bgImage, bgOpacity, theme } = useAppSettings();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const routerState = useRouterState();
   const activePath = routerState.location.pathname;
+  const navigate = useNavigate();
 
   function handleNavigate(path: string) {
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    navigate({ to: path });
   }
 
   return (
@@ -621,9 +768,11 @@ function AppShell({
         {/* Mobile header */}
         <header className="md:hidden flex h-12 border-b border-border bg-card/90 backdrop-blur-sm items-center justify-between px-4 shrink-0">
           <span
-            className={`font-display text-sm font-bold ${theme === "grey" ? "text-gray-500" : "text-foreground"}`}
+            className={`font-display text-sm font-bold ${
+              theme === "grey" ? "text-gray-500" : "text-foreground"
+            }`}
           >
-            Orion
+            Naksha 🧭
           </span>
           {selectedSubTopic && (
             <span className="text-xs text-muted-foreground truncate max-w-[160px]">
@@ -667,6 +816,50 @@ function AppShell({
   );
 }
 
+// ── Route components that read from context ────────────────────────────────────
+function IndexRouteComponent() {
+  const { selectedSubTopic, selectedCategory } = useContext(SelectionContext);
+  return selectedSubTopic && selectedCategory ? (
+    <TimerView subTopic={selectedSubTopic} category={selectedCategory} />
+  ) : (
+    <WelcomePage />
+  );
+}
+
+// ── Router created once via useMemo ────────────────────────────────────────────
+const rootRoute = createRootRoute({
+  component: () => (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  ),
+});
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: IndexRouteComponent,
+});
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dashboard",
+  component: DashboardPage,
+});
+
+const todosRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/todos",
+  component: TodoPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  dashboardRoute,
+  todosRoute,
+]);
+const stableRouter = createRouter({ routeTree });
+
 function AppWithState() {
   const [selectedSubTopic, setSelectedSubTopic] = useState<SubTopic | null>(
     null,
@@ -674,57 +867,24 @@ function AppWithState() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null,
   );
-  const { theme, bgImage } = useAppSettings();
 
-  void theme;
-  void bgImage;
+  const selectionValue = useMemo(
+    () => ({
+      selectedSubTopic,
+      selectedCategory,
+      onSelectSubTopic: (st: SubTopic, cat: Category) => {
+        setSelectedSubTopic(st);
+        setSelectedCategory(cat);
+      },
+    }),
+    [selectedSubTopic, selectedCategory],
+  );
 
-  const rootRoute = createRootRoute({
-    component: () => (
-      <AppShell
-        selectedSubTopic={selectedSubTopic}
-        selectedCategory={selectedCategory}
-        onSelectSubTopic={(st, cat) => {
-          setSelectedSubTopic(st);
-          setSelectedCategory(cat);
-        }}
-      >
-        <Outlet />
-      </AppShell>
-    ),
-  });
-
-  const indexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/",
-    component: () =>
-      selectedSubTopic && selectedCategory ? (
-        <TimerView subTopic={selectedSubTopic} category={selectedCategory} />
-      ) : (
-        <WelcomePage />
-      ),
-  });
-
-  const dashboardRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/dashboard",
-    component: DashboardPage,
-  });
-
-  const todosRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/todos",
-    component: TodoPage,
-  });
-
-  const routeTree = rootRoute.addChildren([
-    indexRoute,
-    dashboardRoute,
-    todosRoute,
-  ]);
-  const router = createRouter({ routeTree });
-
-  return <RouterProvider router={router} />;
+  return (
+    <SelectionContext.Provider value={selectionValue}>
+      <RouterProvider router={stableRouter} />
+    </SelectionContext.Provider>
+  );
 }
 
 export default function App() {
