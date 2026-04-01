@@ -28,6 +28,7 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
+  RefreshCw,
   Timer,
   UserCircle2,
   X,
@@ -663,6 +664,23 @@ function SettingsSheet({
                 />
               </div>
             )}
+          </div>
+
+          {/* Refresh App */}
+          <div className="pt-2 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              data-ocid="settings.refresh_button"
+              onClick={() => window.location.reload()}
+              className="w-full gap-2 justify-start"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh App (keeps timer running)
+            </Button>
+            <p className="text-xs text-muted-foreground mt-1 px-1">
+              Reload the UI without losing your timer or data
+            </p>
           </div>
 
           {/* Logout */}

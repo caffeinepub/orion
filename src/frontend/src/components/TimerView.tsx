@@ -186,6 +186,7 @@ export function TimerView({ subTopic, category }: Props) {
   const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionStartNsRef = useRef<bigint>(0n);
   const totalElapsedRef = useRef<number>(0);
+  const plannedSecondsRef = useRef<number>(0);
   const lastBeepMinuteRef = useRef<number>(0);
   const durationMinutesRef = useRef(durationMinutes);
   const subTopicIdRef = useRef(subTopic.id.toString());
@@ -441,24 +442,21 @@ export function TimerView({ subTopic, category }: Props) {
       if (timerState === "idle") playStartSound();
       else playResumeSound();
     }
-    // Request permission; if already granted, send immediate notification
+    // Request notification permission & show timer notification immediately
     if ("Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission().then((perm) => {
-          if (perm === "granted") {
-            swPost({
-              type: "TIMER_BACKGROUNDED",
-              remainingSecs: remainingSecsRef.current,
-              startTs: Date.now(),
-            });
-          }
-        });
-      } else if (Notification.permission === "granted") {
+      const sendTimerStarted = () => {
         swPost({
-          type: "TIMER_BACKGROUNDED",
+          type: "TIMER_STARTED",
           remainingSecs: remainingSecsRef.current,
           startTs: Date.now(),
         });
+      };
+      if (Notification.permission === "default") {
+        Notification.requestPermission().then((perm) => {
+          if (perm === "granted") sendTimerStarted();
+        });
+      } else if (Notification.permission === "granted") {
+        sendTimerStarted();
       }
     }
 
@@ -553,6 +551,7 @@ export function TimerView({ subTopic, category }: Props) {
 
   function handleStop() {
     if (timerState === "idle" && totalElapsedRef.current === 0) return;
+    plannedSecondsRef.current = durationMinutesRef.current * 60;
     if (timerState === "running") {
       const elapsed = Math.floor((Date.now() - startTsRef.current) / 1000);
       accumulatedSecsRef.current += elapsed;
@@ -575,6 +574,10 @@ export function TimerView({ subTopic, category }: Props) {
       categoryId: category.id,
       startTime: sessionStartNsRef.current,
       durationSeconds: duration,
+      plannedDurationSeconds:
+        plannedSecondsRef.current > 0
+          ? BigInt(plannedSecondsRef.current)
+          : undefined,
       note,
       energyRating,
     });
@@ -1244,9 +1247,13 @@ export function TimerView({ subTopic, category }: Props) {
       <SessionEndModal
         open={showModal}
         onSave={handleSaveSession}
-        onClose={() => {
-          setShowModal(false);
-          setRemainingSecs(durationMinutesRef.current * 60);
+        onClose={async () => {
+          if (totalElapsedRef.current > 0) {
+            await handleSaveSession("", "Medium");
+          } else {
+            setShowModal(false);
+            setRemainingSecs(durationMinutesRef.current * 60);
+          }
         }}
       />
     </div>

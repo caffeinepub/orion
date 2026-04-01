@@ -505,6 +505,94 @@ function SessionNotes({
   );
 }
 
+function RecentSessions({
+  sessions,
+  subTopics,
+}: { sessions: Session[]; subTopics: { id: bigint; name: string }[] }) {
+  const recent = [...sessions]
+    .sort((a, b) => Number(b.startTime - a.startTime))
+    .slice(0, 10);
+
+  if (recent.length === 0) {
+    return (
+      <p
+        data-ocid="dashboard.sessions.empty_state"
+        className="text-muted-foreground text-sm text-center py-4"
+      >
+        You haven't done this yet, Dumbo! 🥜
+      </p>
+    );
+  }
+
+  function fmtDuration(secs: bigint) {
+    const s = Number(secs);
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    if (m === 0) return `${rem}s`;
+    return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+  }
+
+  function energyColor(rating: string) {
+    if (rating === "High")
+      return "bg-green-500/20 text-green-400 border-green-500/30";
+    if (rating === "Low") return "bg-red-500/20 text-red-400 border-red-500/30";
+    return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+  }
+
+  return (
+    <div className="space-y-2">
+      {recent.map((s, idx) => {
+        const st = subTopics.find((t) => t.id === s.subTopicId);
+        const planned = (s as any).plannedDurationSeconds
+          ? BigInt((s as any).plannedDurationSeconds)
+          : undefined;
+        const pct =
+          planned && planned > 0n
+            ? Math.round((Number(s.durationSeconds) * 100) / Number(planned))
+            : null;
+        const plannedMins = planned ? Math.round(Number(planned) / 60) : null;
+        const date = new Date(Number(s.startTime / 1_000_000n));
+        const dateStr = `${date.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        })} ${date.toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`;
+        return (
+          <div
+            key={s.id.toString()}
+            data-ocid={`dashboard.sessions.item.${idx + 1}`}
+            className="flex items-center gap-3 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium text-foreground truncate">
+                  {st?.name ?? "Unknown"}
+                </span>
+                <span className="text-xs text-muted-foreground">{dateStr}</span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-xs text-primary font-mono">
+                  {fmtDuration(s.durationSeconds)}
+                </span>
+                {pct !== null && plannedMins !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    {pct}% of {plannedMins}min goal
+                  </span>
+                )}
+              </div>
+            </div>
+            <Badge className={`text-xs border ${energyColor(s.energyRating)}`}>
+              {s.energyRating}
+            </Badge>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const [period, setPeriod] = useState<Period>("day");
   const [range, setRange] = useState<[bigint, bigint]>(getTimeRange("day"));
@@ -594,6 +682,13 @@ export function DashboardPage() {
 
                 <div className="bg-card rounded-xl border border-border p-6">
                   <HourlyDistribution sessions={sessions} />
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-6">
+                  <h3 className="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+                    Recent Sessions
+                  </h3>
+                  <RecentSessions sessions={sessions} subTopics={subTopics} />
                 </div>
 
                 <div className="bg-card rounded-xl border border-border p-6">

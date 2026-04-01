@@ -304,7 +304,7 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
               >
                 <div className="flex items-stretch">
                   {accentLine}
-                  <div className="flex-1 p-3">
+                  <div className="flex-1 p-2">
                     {/* Card header row */}
                     <div className="flex items-center gap-1">
                       <button
@@ -313,7 +313,7 @@ export function Sidebar({ selectedSubTopicId, onSelectSubTopic }: Props) {
                         onClick={() => toggleCat(catId)}
                         data-ocid="sidebar.toggle"
                       >
-                        <span className="text-base font-bold text-foreground flex-1 truncate">
+                        <span className="text-sm font-semibold text-foreground flex-1 truncate">
                           {cat.name}
                         </span>
                         {totalSecs > 0 && (

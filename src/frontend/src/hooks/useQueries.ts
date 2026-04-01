@@ -102,6 +102,9 @@ function loadSessions(): Session[] {
       startTime: BigInt(s.startTime),
       durationSeconds: BigInt(s.durationSeconds),
       owner: "",
+      plannedDurationSeconds: s.plannedDurationSeconds
+        ? BigInt(s.plannedDurationSeconds)
+        : undefined,
     }));
   } catch {
     return [];
@@ -120,6 +123,7 @@ function saveSessions(sessions: Session[]) {
         startTime: s.startTime.toString(),
         durationSeconds: s.durationSeconds.toString(),
         owner: "",
+        plannedDurationSeconds: (s as any).plannedDurationSeconds?.toString(),
       })),
     ),
   );
@@ -345,6 +349,7 @@ export function useAddSession() {
       categoryId: bigint;
       startTime: bigint;
       durationSeconds: bigint;
+      plannedDurationSeconds?: bigint;
       note: string;
       energyRating: string;
     }): Promise<Session> => {
@@ -359,6 +364,7 @@ export function useAddSession() {
         note: args.note,
         energyRating: args.energyRating,
       };
+      (session as any).plannedDurationSeconds = args.plannedDurationSeconds;
       saveSessions([...sessions, session]);
       return session;
     },
