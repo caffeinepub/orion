@@ -23,8 +23,25 @@ function buildProgressBar(remaining, total) {
   const pct = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
   const filled = Math.round(pct / 10);
   const empty = 10 - filled;
-  const bar = '█'.repeat(filled) + '░'.repeat(empty);
-  return `${bar} ${pct}% complete`;
+  const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
+  return `${bar} ${pct}% done`;
+}
+
+function showTimerNotification(remaining, total) {
+  const progressBar = buildProgressBar(remaining, total);
+  return self.registration.showNotification('Naksha \ud83e\udded Study Timer', {
+    body: `\u23f1 ${formatTime(remaining)} remaining\n${progressBar}`,
+    tag: NOTIF_TAG,
+    silent: true,
+    renotify: true,
+    icon: '/favicon.ico',
+    badge: '/favicon.ico',
+    requireInteraction: false,
+    vibrate: [50],
+    actions: [
+      { action: 'stop', title: '\u23f9 Stop' }
+    ],
+  });
 }
 
 function startBgInterval() {
@@ -38,33 +55,20 @@ function startBgInterval() {
       clearInterval(bgTimerInterval);
       bgTimerInterval = null;
       self.registration.showNotification('Naksha Study Timer', {
-        body: '✅ Session complete! Great work.',
+        body: '\u2705 Session complete! Great work.',
         tag: NOTIF_TAG,
         silent: false,
         icon: '/favicon.ico',
         badge: '/favicon.ico',
-        requireInteraction: false,
+        requireInteraction: true,
         renotify: true,
-        vibrate: [200, 100, 200],
+        vibrate: [200, 100, 200, 100, 200],
       });
       return;
     }
 
-    const progressBar = buildProgressBar(remaining, swTotalDurationSecs);
-    self.registration.showNotification('Naksha 🧭 Study Timer', {
-      body: `⏱ ${formatTime(remaining)} remaining\n${progressBar}`,
-      tag: NOTIF_TAG,
-      silent: true,
-      renotify: true,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      requireInteraction: false,
-      vibrate: [100],
-      actions: [
-        { action: 'stop', title: '⏹ Stop' }
-      ],
-    });
-  }, 10000);
+    showTimerNotification(remaining, swTotalDurationSecs);
+  }, 5000);
 }
 
 self.addEventListener('notificationclick', (event) => {
@@ -74,6 +78,9 @@ self.addEventListener('notificationclick', (event) => {
       self.clients.matchAll({ type: 'window' }).then(clients => {
         for (const client of clients) {
           client.postMessage({ type: 'SW_STOP_TIMER' });
+        }
+        if (clients.length === 0) {
+          return self.clients.openWindow('/');
         }
       })
     );
@@ -93,58 +100,44 @@ self.addEventListener('message', (event) => {
   const data = event.data;
   if (!data) return;
 
-  if (data.type === 'TIMER_STARTED') {
+  if (data.type === 'TIMER_STARTED' || data.type === 'TIMER_BACKGROUNDED') {
     swStartTs = data.startTs;
     swRemainingSecs = data.remainingSecs;
     if (data.totalDurationSecs) swTotalDurationSecs = data.totalDurationSecs;
 
-    const progressBar = buildProgressBar(swRemainingSecs, swTotalDurationSecs);
-    self.registration.showNotification('Naksha 🧭 Study Timer', {
-      body: `⏱ ${formatTime(swRemainingSecs)} remaining\n${progressBar}`,
-      tag: NOTIF_TAG,
-      silent: true,
-      renotify: true,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      requireInteraction: false,
-      vibrate: [100],
-      actions: [
-        { action: 'stop', title: '⏹ Stop' }
-      ],
-    });
+    const elapsed = Math.floor((Date.now() - swStartTs) / 1000);
+    const remaining = Math.max(0, swRemainingSecs - elapsed);
+    showTimerNotification(remaining, swTotalDurationSecs);
     startBgInterval();
   }
 
-  if (data.type === 'TIMER_BACKGROUNDED') {
-    swStartTs = data.startTs;
-    swRemainingSecs = data.remainingSecs;
-    if (data.totalDurationSecs) swTotalDurationSecs = data.totalDurationSecs;
-
-    const remaining = Math.max(0, swRemainingSecs - Math.floor((Date.now() - swStartTs) / 1000));
-    const progressBar = buildProgressBar(remaining, swTotalDurationSecs);
-    self.registration.showNotification('Naksha 🧭 Study Timer', {
-      body: `⏱ ${formatTime(remaining)} remaining\n${progressBar}`,
-      tag: NOTIF_TAG,
-      silent: true,
-      renotify: true,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      requireInteraction: false,
-      vibrate: [100],
-      actions: [
-        { action: 'stop', title: '⏹ Stop' }
-      ],
-    });
-    startBgInterval();
-  }
-
+  // Keep notification alive when app is foregrounded
   if (data.type === 'TIMER_FOREGROUNDED') {
+    // notification stays visible
+  }
+
+  if (data.type === 'TIMER_PAUSED') {
+    // Stop the interval, show paused state notification
     if (bgTimerInterval) {
       clearInterval(bgTimerInterval);
       bgTimerInterval = null;
     }
-    self.registration.getNotifications({ tag: NOTIF_TAG }).then((notifs) => {
-      for (const n of notifs) n.close();
+    swStartTs = 0;
+    const remaining = data.remainingSecs || swRemainingSecs;
+    const total = data.totalDurationSecs || swTotalDurationSecs;
+    const progressBar = buildProgressBar(remaining, total);
+    self.registration.showNotification('Naksha \ud83e\udded Study Timer', {
+      body: `\u23f8\ufe0f Paused \u2022 ${formatTime(remaining)} remaining\n${progressBar}`,
+      tag: NOTIF_TAG,
+      silent: true,
+      renotify: true,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      requireInteraction: false,
+      vibrate: [50],
+      actions: [
+        { action: 'stop', title: '\u23f9 Stop' }
+      ],
     });
   }
 
@@ -164,7 +157,7 @@ self.addEventListener('message', (event) => {
   if (data.type === 'SCHEDULE_BEEP') {
     const { delay, label } = data;
     const tid = setTimeout(() => {
-      self.registration.showNotification('Naksha ⏰ 10-Min Mark!', {
+      self.registration.showNotification('Naksha \u23f0 10-Min Mark!', {
         body: label,
         tag: `naksha-beep-${Date.now()}`,
         silent: false,

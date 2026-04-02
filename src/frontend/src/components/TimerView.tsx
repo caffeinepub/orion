@@ -548,7 +548,11 @@ export function TimerView({ subTopic, category }: Props) {
     accumulatedSecsRef.current += elapsed;
     clearInterval_();
     releaseWakeLock();
-    swPost({ type: "TIMER_FOREGROUNDED" });
+    swPost({
+      type: "TIMER_PAUSED",
+      remainingSecs: remainingSecsRef.current,
+      totalDurationSecs: durationMinutesRef.current * 60,
+    });
     swPost({ type: "CANCEL_BEEPS" });
     setTimerState("paused");
     timerStateRef.current = "paused";
