@@ -53,6 +53,20 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { TodoPage } from "./pages/TodoPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
+// ── Selection persistence helpers ─────────────────────────────────────────────
+const LS_SELECTION = "naksha-active-selection";
+function saveSelection(subTopic: SubTopic, category: Category) {
+  localStorage.setItem(LS_SELECTION, JSON.stringify({ subTopic, category }));
+}
+function loadSelection(): { subTopic: SubTopic; category: Category } | null {
+  try {
+    const raw = localStorage.getItem(LS_SELECTION);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Selection Context ──────────────────────────────────────────────────────────
 interface SelectionContextValue {
   selectedSubTopic: SubTopic | null;
@@ -427,6 +441,16 @@ function SettingsSheet({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [notifPermission, setNotifPermission] =
+    useState<NotificationPermission>(
+      "Notification" in window ? Notification.permission : "denied",
+    );
+
+  async function handleEnableNotifications() {
+    if (!("Notification" in window)) return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -585,6 +609,42 @@ function SettingsSheet({
             )}
           </div>
 
+          {/* Notifications */}
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Notifications
+            </p>
+            {"Notification" in window ? (
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <span className="text-sm font-medium">Lock Screen Timer</span>
+                  <p className="text-xs text-muted-foreground">
+                    {notifPermission === "granted"
+                      ? "✅ Enabled — timer shows on lock screen"
+                      : notifPermission === "denied"
+                        ? "❌ Blocked — enable in browser settings"
+                        : "⚠️ Not yet enabled"}
+                  </p>
+                </div>
+                {notifPermission !== "granted" &&
+                  notifPermission !== "denied" && (
+                    <button
+                      type="button"
+                      data-ocid="settings.notif.enable_button"
+                      onClick={handleEnableNotifications}
+                      className="px-3 py-1.5 text-xs font-semibold bg-primary/20 text-primary rounded-lg border border-primary/30"
+                    >
+                      Enable
+                    </button>
+                  )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Not supported on this device
+              </p>
+            )}
+          </div>
+
           {/* Living Space */}
           <div className="mb-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -734,9 +794,31 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { bgImage, bgOpacity, theme } = useAppSettings();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
   const routerState = useRouterState();
   const activePath = routerState.location.pathname;
   const navigate = useNavigate();
+
+  // Request persistent storage and show notification banner on mount
+  useEffect(() => {
+    // Request persistent storage so Android doesn't evict data
+    if ("storage" in navigator && "persist" in navigator.storage) {
+      navigator.storage.persist().catch(() => {});
+    }
+
+    // Show in-app banner if notification permission not yet granted
+    if ("Notification" in window && Notification.permission !== "granted") {
+      setShowNotifBanner(true);
+    }
+  }, []);
+
+  async function requestNotifPermission() {
+    if (!("Notification" in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm === "granted") {
+      setShowNotifBanner(false);
+    }
+  }
 
   function handleNavigate(path: string) {
     navigate({ to: path });
@@ -834,6 +916,41 @@ function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </header>
 
+        {/* Notification permission banner */}
+        {showNotifBanner &&
+          "Notification" in window &&
+          Notification.permission !== "granted" && (
+            <div className="sticky top-0 z-50 bg-amber-500/90 backdrop-blur-sm text-white text-xs px-4 py-2 flex items-center justify-between gap-2">
+              <span>
+                🔔 Enable notifications to see your timer on the lock screen
+              </span>
+              <div className="flex gap-2 shrink-0">
+                {Notification.permission === "denied" ? (
+                  <span className="text-white/80">
+                    Enable in browser settings
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    data-ocid="notif.allow_button"
+                    onClick={requestNotifPermission}
+                    className="bg-white text-amber-700 text-xs font-bold px-3 py-1 rounded-full"
+                  >
+                    Allow
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-ocid="notif.dismiss_button"
+                  onClick={() => setShowNotifBanner(false)}
+                  className="text-white/70 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
         <main className="flex-1 overflow-y-auto md:p-8 pb-20 md:pb-8">
           {children}
         </main>
@@ -915,24 +1032,11 @@ const stableRouter = createRouter({ routeTree });
 
 function AppWithState() {
   const [selectedSubTopic, setSelectedSubTopic] = useState<SubTopic | null>(
-    null,
+    () => loadSelection()?.subTopic ?? null,
   );
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
-    null,
+    () => loadSelection()?.category ?? null,
   );
-
-  // Request notification permission early so Android shows the prompt on first use
-  useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      // Small delay so the app UI is visible before the browser dialog appears
-      const t = setTimeout(() => {
-        Notification.requestPermission().catch(() => {
-          /* ignore */
-        });
-      }, 2000);
-      return () => clearTimeout(t);
-    }
-  }, []);
 
   const selectionValue = useMemo(
     () => ({
@@ -941,6 +1045,7 @@ function AppWithState() {
       onSelectSubTopic: (st: SubTopic, cat: Category) => {
         setSelectedSubTopic(st);
         setSelectedCategory(cat);
+        saveSelection(st, cat);
       },
     }),
     [selectedSubTopic, selectedCategory],

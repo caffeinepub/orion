@@ -14,16 +14,23 @@ declare global {
   }
 }
 
-// ── Register Service Worker for background timer + notifications ──
+// Register Service Worker
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/sw.js")
-      .then((reg) => {
-        console.log("[Naksha] SW registered:", reg.scope);
+      .register("/sw.js", { scope: "/" })
+      .then((registration) => {
+        registration.addEventListener("updatefound", () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener("statechange", () => {
+              // New SW activated — no forced reload needed
+            });
+          }
+        });
       })
       .catch((err) => {
-        console.warn("[Naksha] SW registration failed:", err);
+        console.warn("SW registration failed:", err);
       });
   });
 }

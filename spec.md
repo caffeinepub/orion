@@ -1,26 +1,34 @@
 # Naksha Study Timer
 
 ## Current State
-The app has a Service Worker file (`sw.js`) that handles background timer, notifications, and 10-min beeps. However, the SW is **never registered** — no call to `navigator.serviceWorker.register('/sw.js')` exists anywhere in the codebase. Additionally, `swPost()` only sends messages if `navigator.serviceWorker.controller` is non-null, which it won't be until the SW is registered and activated. The notification permission request is inside `startTimer()` but relies on SW messages that silently fail. Timer state IS persisted to localStorage correctly on every tick.
+- Timer state (start timestamp, remaining seconds, accumulated) is saved to localStorage every 500ms via `saveTimerState()`.
+- On TimerView mount, `loadTimerState()` restores the timer if subTopicId matches.
+- **Bug**: The selected subtopic/category is NOT persisted. On app relaunch from home screen, `selectedSubTopic` is `null`, so `WelcomePage` renders instead of `TimerView`, and timer restoration code never runs → timer shows as 0.
+- Notification permission is requested 2s after login inside `AppWithState`, but Android PWA may suppress silent JS permission requests in standalone mode.
+- `navigator.storage.persist()` is never called, so Android can evict localStorage.
+- Service Worker is registered somewhere but sw.js is present in public/.
 
 ## Requested Changes (Diff)
 
 ### Add
-- SW registration in `main.tsx` on app load, waiting for SW activation before first use
-- A utility `swReady()` helper that returns the active SW controller, waiting via `navigator.serviceWorker.ready` if needed
-- Notification permission request on app startup (after first user interaction or on mount with a gentle prompt) so Android shows the permission dialog
+- Persist `selectedSubTopic` and `selectedCategory` to localStorage on selection, restore on app load so user returns directly to TimerView after app relaunch
+- In-app permission banner: if notifications are `"default"` or `"denied"`, show a sticky banner inside the app with a button to request permission (or instructions to enable in settings if denied)
+- Call `navigator.storage.persist()` on app load to request persistent storage from Android
+- Register Service Worker explicitly in `main.tsx` with proper error handling and update logic
+- Add a `"notificationpermission"` section in Settings showing current permission status with a re-request button
 
 ### Modify
-- `main.tsx`: add `navigator.serviceWorker.register('/sw.js')` call
-- `swPost()` in `TimerView.tsx`: use `navigator.serviceWorker.ready` to get the active worker instead of checking `controller` (which is null on first load after SW activation)
-- `startTimer()`: request notification permission immediately and then send `TIMER_STARTED` to the SW once it's ready
-- `App.tsx`: request notification permission on mount for Android users so the prompt appears before they start a timer
+- `AppWithState`: restore persisted `selectedSubTopic`/`selectedCategory` from localStorage on mount; save them to localStorage whenever they change
+- Notification permission request: trigger immediately on mount (not delayed 2s) AND show visible in-app prompt so Android actually shows the system dialog
+- SW registration: move to `main.tsx`, ensure it fires before any user interaction, add `updatefound` handler
 
 ### Remove
-- Nothing removed
+- Nothing to remove
 
 ## Implementation Plan
-1. Add SW registration in `main.tsx`
-2. Update `swPost` to use `navigator.serviceWorker.ready.then(reg => reg.active.postMessage(...))` so it works even before `controller` is set
-3. Add notification permission request in `App.tsx` on mount (runs once, only if `permission === 'default'`)
-4. Ensure `startTimer()` in `TimerView.tsx` waits for SW ready before sending `TIMER_STARTED`
+1. Create `src/utils/persistSelection.ts` — helpers to save/load `selectedSubTopic` and `selectedCategory` from localStorage
+2. In `App.tsx` `AppWithState`: load persisted selection on init, save to localStorage whenever `onSelectSubTopic` is called
+3. In `App.tsx` `AppWithState`: move notification permission request to fire immediately on mount (0ms delay, not 2s), AND add a visible in-app permission banner component that shows when `Notification.permission !== 'granted'`
+4. In `App.tsx` `AppWithState`: call `navigator.storage.persist()` on mount
+5. In `main.tsx`: register the Service Worker with proper `updatefound` and error handling
+6. In `SettingsSheet`: add a Notifications section showing permission status + "Enable Notifications" button
