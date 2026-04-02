@@ -38,6 +38,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -919,6 +920,19 @@ function AppWithState() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null,
   );
+
+  // Request notification permission early so Android shows the prompt on first use
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      // Small delay so the app UI is visible before the browser dialog appears
+      const t = setTimeout(() => {
+        Notification.requestPermission().catch(() => {
+          /* ignore */
+        });
+      }, 2000);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const selectionValue = useMemo(
     () => ({

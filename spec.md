@@ -1,58 +1,26 @@
-# Naksha — Sound System + Timer Persistence Fixes
+# Naksha Study Timer
 
 ## Current State
-- `playBeep.ts` uses a plain sine-wave oscillator — no real "sounds"
-- No clock tick sound, no sound on/off controls in Settings
-- When timer is running and user navigates away then comes back, the timer is restored as "paused" requiring manual Resume tap — user says it feels like a restart
-- Notifications are only sent to SW when page becomes hidden (visibilitychange), not immediately on Start
-- Notification permission is requested async without waiting, so if user starts timer and immediately backgrounds the app, no notification may appear
+The app has a Service Worker file (`sw.js`) that handles background timer, notifications, and 10-min beeps. However, the SW is **never registered** — no call to `navigator.serviceWorker.register('/sw.js')` exists anywhere in the codebase. Additionally, `swPost()` only sends messages if `navigator.serviceWorker.controller` is non-null, which it won't be until the SW is registered and activated. The notification permission request is inside `startTimer()` but relies on SW messages that silently fail. Timer state IS persisted to localStorage correctly on every tick.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Cute sound system** in `playBeep.ts`:
-  - `playStartSound()` — short ascending arpeggio (C4-E4-G4, each 0.12s, volume ~0.12)
-  - `playPauseSound()` — two soft descending tones (G4-E4)
-  - `playTickSound()` — very quiet, brief click (800Hz, 0.05s, volume 0.05) for clock tick
-  - `playMilestoneSound()` — musical chime sequence: C5-E5-G5-C6 for 10-min marks (gentle, not harsh)
-  - `playCompleteSound()` — celebratory fanfare: ascending arpeggio then sustained high note
-  - `playResumeSound()` — single soft chime
-- **Sound settings** in `useAppSettings.ts`:
-  - `soundEnabled: boolean` (default true) — master sound on/off, key `naksha-sound-enabled`
-  - `tickEnabled: boolean` (default false) — clock tick every second, key `naksha-tick-enabled`
-  - Expose setters
-- **Sound Settings section** in `App.tsx` Settings sheet — two toggles: "Sounds" (master) and "Clock Tick" (sub-option, only visible when Sounds enabled)
-- **Auto-resume timer** on mount: when a running timer is restored from localStorage, auto-start it immediately (don't require user to tap Resume). Show a brief toast "Timer resumed" instead of "Tap Resume to continue".
-- **Immediate notification on timer start**: call `requestNotifPermission()` and immediately show a notification via SW as soon as the user starts the timer (not just when backgrounded). This way the notification is already active and updates as they use the app.
+- SW registration in `main.tsx` on app load, waiting for SW activation before first use
+- A utility `swReady()` helper that returns the active SW controller, waiting via `navigator.serviceWorker.ready` if needed
+- Notification permission request on app startup (after first user interaction or on mount with a gentle prompt) so Android shows the permission dialog
 
 ### Modify
-- `TimerView.tsx`:
-  - Import and call the new sound functions at appropriate moments:
-    - `playStartSound()` on start (alongside `initAudioContext`)
-    - `playPauseSound()` on pause
-    - `playMilestoneSound()` replaces the 3-beep milestone logic
-    - `playCompleteSound()` replaces the 3-beep complete logic
-    - `playTickSound()` every second when `tickEnabled` is true
-    - `playResumeSound()` on resume
-  - All sounds respect `soundEnabled` (check before playing)
-  - Timer restore logic: when `saved.state === 'running'` and `remaining > 0`, auto-resume instead of pausing. Use a `pendingAutoResumeRef` flag + a `useEffect` watching `timerState === 'paused'` to call `startTimer()` automatically
-  - On `startTimer()`: after `requestNotifPermission()`, also post `TIMER_BACKGROUNDED` to SW immediately so the notification exists from the start (not just when hidden)
-- `App.tsx`: Add Sound section to settings sheet
-- `useAppSettings.ts`: Add sound-related keys and state
+- `main.tsx`: add `navigator.serviceWorker.register('/sw.js')` call
+- `swPost()` in `TimerView.tsx`: use `navigator.serviceWorker.ready` to get the active worker instead of checking `controller` (which is null on first load after SW activation)
+- `startTimer()`: request notification permission immediately and then send `TIMER_STARTED` to the SW once it's ready
+- `App.tsx`: request notification permission on mount for Android users so the prompt appears before they start a timer
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
-1. Update `playBeep.ts` with new sound functions (`playStartSound`, `playPauseSound`, `playTickSound`, `playMilestoneSound`, `playCompleteSound`, `playResumeSound`) — all use AudioContext, respect `soundEnabled` via a module-level flag or parameter
-2. Update `useAppSettings.ts` to add `soundEnabled`, `tickEnabled` with localStorage persistence
-3. Update `App.tsx` Settings sheet to add Sound toggles (master + tick sub-option)
-4. Update `TimerView.tsx`:
-   a. Import new sound functions
-   b. Use `soundEnabled`, `tickEnabled` from `useAppSettings`
-   c. Call sounds at the right moments
-   d. Add tick sound to the interval (every second when `tickEnabled`)
-   e. Replace old beep calls with new musical ones
-   f. Fix auto-resume: use `pendingAutoResumeRef` + effect
-   g. Post `TIMER_BACKGROUNDED` to SW immediately on start (as well as on visibilitychange)
-5. Validate and fix any TypeScript errors
+1. Add SW registration in `main.tsx`
+2. Update `swPost` to use `navigator.serviceWorker.ready.then(reg => reg.active.postMessage(...))` so it works even before `controller` is set
+3. Add notification permission request in `App.tsx` on mount (runs once, only if `permission === 'default'`)
+4. Ensure `startTimer()` in `TimerView.tsx` waits for SW ready before sending `TIMER_STARTED`

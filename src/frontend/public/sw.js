@@ -1,7 +1,8 @@
-// Naksha Study Timer - Service Worker
-// Handles background timer notifications and 10-min beeps
+// Naksha Study Timer - Service Worker v2
+// Handles background timer notifications, 10-min beeps, and survives SW restarts
 
 const NOTIF_TAG = 'naksha-timer';
+const STATE_CACHE = 'naksha-sw-state-v1';
 let bgTimerInterval = null;
 let scheduledBeeps = [];
 let swStartTs = 0;
@@ -9,7 +10,50 @@ let swRemainingSecs = 0;
 let swTotalDurationSecs = 0;
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    self.clients.claim().then(() => restoreStateFromCache())
+  );
+});
+
+// Persist timer state to Cache Storage so it survives SW restart
+async function saveStateToCache() {
+  try {
+    const cache = await caches.open(STATE_CACHE);
+    const data = JSON.stringify({ swStartTs, swRemainingSecs, swTotalDurationSecs });
+    await cache.put('timer-state', new Response(data, { headers: { 'Content-Type': 'application/json' } }));
+  } catch (e) { /* ignore */ }
+}
+
+async function restoreStateFromCache() {
+  try {
+    const cache = await caches.open(STATE_CACHE);
+    const resp = await cache.match('timer-state');
+    if (!resp) return;
+    const data = await resp.json();
+    if (data.swStartTs && data.swRemainingSecs) {
+      swStartTs = data.swStartTs;
+      swRemainingSecs = data.swRemainingSecs;
+      swTotalDurationSecs = data.swTotalDurationSecs || 0;
+      // Check if timer is still valid (not expired)
+      const elapsed = Math.floor((Date.now() - swStartTs) / 1000);
+      const remaining = swRemainingSecs - elapsed;
+      if (remaining > 0) {
+        startBgInterval();
+      } else {
+        // Timer already expired while SW was dead
+        clearCachedState();
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function clearCachedState() {
+  try {
+    const cache = await caches.open(STATE_CACHE);
+    await cache.delete('timer-state');
+  } catch (e) { /* ignore */ }
+}
 
 function formatTime(secs) {
   const m = Math.floor(secs / 60);
@@ -54,6 +98,7 @@ function startBgInterval() {
     if (remaining <= 0) {
       clearInterval(bgTimerInterval);
       bgTimerInterval = null;
+      clearCachedState();
       self.registration.showNotification('Naksha Study Timer', {
         body: '\u2705 Session complete! Great work.',
         tag: NOTIF_TAG,
@@ -105,24 +150,25 @@ self.addEventListener('message', (event) => {
     swRemainingSecs = data.remainingSecs;
     if (data.totalDurationSecs) swTotalDurationSecs = data.totalDurationSecs;
 
+    saveStateToCache();
+
     const elapsed = Math.floor((Date.now() - swStartTs) / 1000);
     const remaining = Math.max(0, swRemainingSecs - elapsed);
     showTimerNotification(remaining, swTotalDurationSecs);
     startBgInterval();
   }
 
-  // Keep notification alive when app is foregrounded
   if (data.type === 'TIMER_FOREGROUNDED') {
-    // notification stays visible
+    // Notification stays visible — no action needed
   }
 
   if (data.type === 'TIMER_PAUSED') {
-    // Stop the interval, show paused state notification
     if (bgTimerInterval) {
       clearInterval(bgTimerInterval);
       bgTimerInterval = null;
     }
     swStartTs = 0;
+    saveStateToCache();
     const remaining = data.remainingSecs || swRemainingSecs;
     const total = data.totalDurationSecs || swTotalDurationSecs;
     const progressBar = buildProgressBar(remaining, total);
@@ -149,6 +195,7 @@ self.addEventListener('message', (event) => {
       clearInterval(bgTimerInterval);
       bgTimerInterval = null;
     }
+    clearCachedState();
     self.registration.getNotifications({ tag: NOTIF_TAG }).then((notifs) => {
       for (const n of notifs) n.close();
     });

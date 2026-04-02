@@ -129,9 +129,20 @@ function loadTimerState(): PersistedTimer | null {
 
 // ── Service Worker helpers ──
 function swPost(msg: object) {
-  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+  if (!("serviceWorker" in navigator)) return;
+  // If SW is already controlling the page, send immediately
+  if (navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage(msg);
+    return;
   }
+  // Fallback: wait for SW to be ready (first load after registration)
+  navigator.serviceWorker.ready
+    .then((reg) => {
+      if (reg.active) reg.active.postMessage(msg);
+    })
+    .catch(() => {
+      /* SW unavailable */
+    });
 }
 
 export function TimerView({ subTopic, category }: Props) {
@@ -457,21 +468,21 @@ export function TimerView({ subTopic, category }: Props) {
       else playResumeSound();
     }
     // Request notification permission & show timer notification immediately
+    const sendTimerStartedToSW = () => {
+      swPost({
+        type: "TIMER_STARTED",
+        remainingSecs: remainingSecsRef.current,
+        startTs: Date.now(),
+        totalDurationSecs: durationMinutesRef.current * 60,
+      });
+    };
     if ("Notification" in window) {
-      const sendTimerStarted = () => {
-        swPost({
-          type: "TIMER_STARTED",
-          remainingSecs: remainingSecsRef.current,
-          startTs: Date.now(),
-          totalDurationSecs: durationMinutesRef.current * 60,
-        });
-      };
       if (Notification.permission === "default") {
         Notification.requestPermission().then((perm) => {
-          if (perm === "granted") sendTimerStarted();
+          if (perm === "granted") sendTimerStartedToSW();
         });
       } else if (Notification.permission === "granted") {
-        sendTimerStarted();
+        sendTimerStartedToSW();
       }
     }
 

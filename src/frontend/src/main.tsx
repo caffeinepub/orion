@@ -14,6 +14,20 @@ declare global {
   }
 }
 
+// ── Register Service Worker for background timer + notifications ──
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((reg) => {
+        console.log("[Naksha] SW registered:", reg.scope);
+      })
+      .catch((err) => {
+        console.warn("[Naksha] SW registration failed:", err);
+      });
+  });
+}
+
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
